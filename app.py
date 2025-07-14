@@ -10,18 +10,21 @@ def to_pascal_case(s):
     return ' '.join(word.capitalize() for word in s.split())
 
 # Function to generate certificates
-def generate_certificates(template_path, names_uids):
+def generate_certificates(template_path, names_uids, include_uid=True):
     output_files = []
-    for index, (name, uid) in enumerate(names_uids):
+    for index, item in enumerate(names_uids):
+        name = item[0]
+        uid = item[1] if include_uid and len(item) > 1 else ""
+
         formatted_name = to_pascal_case(name)
-        formatted_uid = uid.upper()  # Convert UID to uppercase
-        text = f"{formatted_name} ({formatted_uid})"
-        
+        formatted_uid = uid.upper() if uid else ""
+        text = f"{formatted_name} ({formatted_uid})" if formatted_uid else formatted_name
+
         template = cv2.imread(template_path)
-        cv2.putText(template, text, (254, 770), cv2.FONT_HERSHEY_SCRIPT_SIMPLEX, 2, (0,255,0), 2, cv2.LINE_AA)
+        cv2.putText(template, text, (254, 770), cv2.FONT_HERSHEY_SCRIPT_SIMPLEX, 2, (0, 255, 0), 2, cv2.LINE_AA)
         output_path = f'Certificate_{formatted_name}.jpg'
         cv2.imwrite(output_path, template)
-        output_files.append(output_path)  # Keep track of generated files
+        output_files.append(output_path)
         print(f'Processing Certificate {index + 1}/{len(names_uids)}')
     print('All Certificates are ready')
     return output_files
@@ -33,16 +36,15 @@ def create_zip_file(file_list, zip_filename='certificates.zip'):
             zipf.write(file)
     return zip_filename
 
-# Streamlit interface
-st.set_page_config(page_title="Certificate Generator")
-
-# Add custom CSS for logo positioning
 # Function to load and encode the logo
 def load_image(image_path):
     with open(image_path, "rb") as img_file:
         return base64.b64encode(img_file.read()).decode()
 
-# Add custom CSS for logo positioning
+# Streamlit interface
+st.set_page_config(page_title="Certificate Generator")
+
+# Custom CSS for logo
 st.markdown(
     """
     <style>
@@ -50,7 +52,7 @@ st.markdown(
         position: absolute;
         top: -20px;
         left: -200px;
-        width: 150px; /* Adjust size as needed */
+        width: 150px;
     }
     </style>
     """,
@@ -59,41 +61,41 @@ st.markdown(
 
 # Load and display the logo
 logo_path = "GFG CU logo.png"  # Ensure this file is in the same directory
-logo_base64 = load_image(logo_path)
-st.markdown(f'<img class="logo" src="data:image/png;base64,{logo_base64}" alt="GFG CU Logo">', unsafe_allow_html=True)
+if os.path.exists(logo_path):
+    logo_base64 = load_image(logo_path)
+    st.markdown(f'<img class="logo" src="data:image/png;base64,{logo_base64}" alt="GFG CU Logo">', unsafe_allow_html=True)
 
 st.title("GFG CU Certificate Generator")
 
-# File upload for the certificate template
-template_file = st.file_uploader("Upload Certificate Template ", type=["jpg", "jpeg","png"])
+# Upload certificate template
+template_file = st.file_uploader("Upload Certificate Template ", type=["jpg", "jpeg", "png"])
 if template_file is not None:
-    # Display the uploaded template
     st.image(template_file, caption="Uploaded Certificate Template", use_column_width=True)
-    
-    # File upload for the Excel file
-    excel_file = st.file_uploader("Upload Excel File with Names and UIDs", type=["xlsx"])
-    if excel_file is not None:
-        # Read the Excel file
-        df = pd.read_excel(excel_file)
-        
-        # Check if required columns are present
-        if 'Name' in df.columns and 'UID' in df.columns:
-            names_uids = df[['Name', 'UID']].values.tolist()  # Create a list of tuples (Name, UID)
 
-            # Process certificates
+    # Upload Excel file
+    excel_file = st.file_uploader("Upload Excel File with Names (and optional UIDs)", type=["xlsx"])
+    if excel_file is not None:
+        df = pd.read_excel(excel_file)
+
+        # Check for 'Name' column
+        if 'Name' not in df.columns:
+            st.error("Excel file must contain at least a 'Name' column.")
+        else:
+            # Determine if 'UID' is present
+            include_uid = 'UID' in df.columns
+            names_uids = df[['Name', 'UID']].values.tolist() if include_uid else df[['Name']].values.tolist()
+
             if st.button("Generate Certificates"):
-                # Save the template file to a temporary location
+                # Save uploaded template temporarily
                 template_path = 'temp_template.jpg'
                 with open(template_path, "wb") as f:
                     f.write(template_file.getbuffer())
-                
-                # Generate the certificates
-                generated_files = generate_certificates(template_path, names_uids)
-                
-                # Create a ZIP file
+
+                # Generate and zip certificates
+                generated_files = generate_certificates(template_path, names_uids, include_uid=include_uid)
                 zip_filename = create_zip_file(generated_files)
-                
-                # Provide download link for the ZIP file
+
+                # Download button
                 with open(zip_filename, 'rb') as f:
                     st.download_button(
                         label="Download All Certificates as ZIP",
@@ -101,16 +103,14 @@ if template_file is not None:
                         file_name=zip_filename,
                         mime='application/zip'
                     )
-                
+
                 st.success("All Certificates are generated and ready for download!")
 
-                # Clean up: remove generated files if needed
+                # Clean up
                 for file in generated_files:
-                    os.remove(file)  # Optionally remove the files after zipping
-                os.remove(template_path)  # Clean up the temporary template file
-        else:
-            st.error("Excel file must contain 'Name' and 'UID' columns.")
-# Footer
+                    os.remove(file)
+                os.remove(template_path)
+
 # Footer
 st.markdown("<hr>", unsafe_allow_html=True)
 st.markdown(
